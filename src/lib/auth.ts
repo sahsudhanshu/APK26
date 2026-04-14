@@ -5,7 +5,9 @@ declare module "next-auth" {
     user: {
       id: string;
       role: string;
-      points: number;
+      totalPoints: number;
+      availablePoints: number;
+      hasOnboarded: boolean;
       phone?: string;
     } & DefaultSession["user"];
   }
@@ -35,7 +37,28 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       try {
         await dbConnect();
 
-        // Upsert user on first login
+        const existingUser = await User.findOne({ email }).lean();
+
+        if (!existingUser) {
+          const role = ADMIN_EMAILS.includes(email) ? "admin" : "user";
+          await User.create({
+            name: user.name || email.split("@")[0],
+            image: user.image || "",
+            email,
+            totalPoints: 0,
+            availablePoints: 0,
+            hasOnboarded: false,
+            role,
+            createdAt: new Date(),
+          });
+          return true;
+        }
+
+        if (!existingUser.hasOnboarded) {
+          await User.findByIdAndUpdate(existingUser._id, { hasOnboarded: true });
+        }
+
+        // Keep role in sync if admin list changes
         const role = ADMIN_EMAILS.includes(email) ? "admin" : "user";
         await User.findOneAndUpdate(
           { email },
@@ -44,12 +67,15 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
               name: user.name || email.split("@")[0],
               image: user.image || "",
               email,
-              points: 0,
+              totalPoints: 0,
+              availablePoints: 0,
+              hasOnboarded: false,
               role,
               createdAt: new Date(),
             },
+            $set: { role },
           },
-          { upsert: true, new: true }
+          { upsert: true, returnDocument: "after" }
         );
       } catch (err) {
         console.error("DB error during signIn (user will still be logged in):", err);
@@ -66,7 +92,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           if (dbUser) {
             session.user.id = dbUser._id.toString();
             session.user.role = dbUser.role;
-            session.user.points = dbUser.points;
+            session.user.totalPoints = dbUser.totalPoints ?? 0;
+            session.user.availablePoints = dbUser.availablePoints ?? 0;
+            session.user.hasOnboarded = dbUser.hasOnboarded ?? true;
             session.user.phone = dbUser.phone;
             session.user.image = dbUser.image || session.user.image;
           }

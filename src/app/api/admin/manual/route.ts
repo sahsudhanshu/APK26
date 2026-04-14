@@ -32,10 +32,16 @@ export async function POST(req: NextRequest) {
     }
 
     // Update user points atomically with bounds check
+    const minRequired = points < 0 ? Math.abs(points) : 0;
+
     const updatedUser = await User.findOneAndUpdate(
-      { _id: userId, points: { $gte: points < 0 ? Math.abs(points) : 0 } },
-      { $inc: { points } },
-      { new: true }
+      {
+        _id: userId,
+        availablePoints: { $gte: minRequired },
+        totalPoints: { $gte: minRequired },
+      },
+      { $inc: { availablePoints: points, totalPoints: points } },
+      { returnDocument: "after" }
     );
 
     if (!updatedUser) {
@@ -61,7 +67,8 @@ export async function POST(req: NextRequest) {
       user: {
         name: updatedUser!.name,
         email: updatedUser!.email,
-        points: updatedUser!.points,
+        totalPoints: updatedUser!.totalPoints,
+        availablePoints: updatedUser!.availablePoints,
       },
     });
 

@@ -3,7 +3,9 @@ import mongoose, { Schema, Document, Model } from "mongoose";
 export interface IUser extends Document {
   name: string;
   email: string;
-  points: number;
+  totalPoints: number;
+  availablePoints: number;
+  hasOnboarded: boolean;
   role: "user" | "admin";
   phone?: string;
   image?: string;
@@ -13,7 +15,9 @@ export interface IUser extends Document {
 const UserSchema = new Schema<IUser>({
   name: { type: String, required: true },
   email: { type: String, required: true, unique: true },
-  points: { type: Number, default: 0 },
+  totalPoints: { type: Number, default: 0 },
+  availablePoints: { type: Number, default: 0 },
+  hasOnboarded: { type: Boolean, default: false },
   role: { type: String, enum: ["user", "admin"], default: "user" },
   phone: { type: String },
   image: { type: String },
@@ -21,7 +25,7 @@ const UserSchema = new Schema<IUser>({
 });
 
 UserSchema.index({ email: 1 }, { unique: true });
-UserSchema.index({ points: -1 }); // For leaderboard sorting
+UserSchema.index({ totalPoints: -1 }); // For leaderboard sorting
 
 const User: Model<IUser> =
   mongoose.models.User || mongoose.model<IUser>("User", UserSchema);

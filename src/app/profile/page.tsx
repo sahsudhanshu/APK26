@@ -40,7 +40,8 @@ interface ProfileData {
   user: {
     name: string;
     email: string;
-    points: number;
+    totalPoints: number;
+    availablePoints: number;
     role: string;
     createdAt: string;
     phone?: string;
@@ -330,10 +331,13 @@ export default function ProfilePage() {
               }}
             >
               <div className="font-mono gradient-text" style={{ fontSize: "2.5rem", fontWeight: 800 }}>
-                {profile.user.points}
+                {profile.user.totalPoints}
               </div>
               <div style={{ fontSize: "0.75rem", color: "hsl(var(--muted-foreground))", textTransform: "uppercase", letterSpacing: "0.1em", display: "flex", alignItems: "center", gap: "0.25rem", justifyContent: "center" }}>
                 <Zap size={12} /> Total Points
+              </div>
+              <div className="font-mono" style={{ fontSize: "0.75rem", color: "hsl(var(--muted-foreground))", marginTop: "0.5rem" }}>
+                Available: {profile.user.availablePoints}
               </div>
             </div>
           </div>

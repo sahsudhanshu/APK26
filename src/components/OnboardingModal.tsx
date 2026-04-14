@@ -13,8 +13,7 @@ export default function OnboardingModal() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // Show modal if authenticated but no phone number exists
-    if (status === "authenticated" && session?.user && !session.user.phone) {
+    if (status === "authenticated" && session?.user && session.user.hasOnboarded === false) {
       setName(session.user.name || "");
       setShow(true);
     } else {

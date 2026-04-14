@@ -12,8 +12,8 @@ export async function GET(req: NextRequest) {
 
     await dbConnect();
 
-    const users = await User.find({}, { name: 1, points: 1, email: 1 })
-      .sort({ points: -1 })
+    const users = await User.find({}, { name: 1, totalPoints: 1, email: 1 })
+      .sort({ totalPoints: -1 })
       .limit(100)
       .lean();
 
@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
       rank: index + 1,
       name: user.name,
       email: user.email,
-      points: user.points,
+      points: user.totalPoints ?? 0,
     }));
 
     return NextResponse.json({ leaderboard });

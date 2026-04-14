@@ -37,29 +37,35 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Atomic duplicate prevention: try to insert, fail on duplicate
-    try {
-      await Claim.create({
-        userId: session.user.id,
-        eventId: event._id,
-        type: "participation",
-        points: event.pointsParticipation,
-        addedBy: "qr-system",
-        timestamp: new Date(),
-      });
-    } catch (error: unknown) {
-      if (error && typeof error === "object" && "code" in error && (error as { code: number }).code === 11000) {
-        return NextResponse.json(
-          { error: "You have already claimed points for this event" },
-          { status: 409 }
-        );
-      }
-      throw error;
+    const maxClaims = event.maxClaimsPerUser || 1;
+    const existingClaims = await Claim.countDocuments({
+      userId: session.user.id,
+      eventId: event._id,
+      type: "participation",
+    });
+
+    if (existingClaims >= maxClaims) {
+      return NextResponse.json(
+        { error: "You have reached the claim limit for this event" },
+        { status: 409 }
+      );
     }
+
+    await Claim.create({
+      userId: session.user.id,
+      eventId: event._id,
+      type: "participation",
+      points: event.pointsParticipation,
+      addedBy: "qr-system",
+      timestamp: new Date(),
+    });
 
     // Add points to user atomically
     await User.findByIdAndUpdate(session.user.id, {
-      $inc: { points: event.pointsParticipation },
+      $inc: {
+        totalPoints: event.pointsParticipation,
+        availablePoints: event.pointsParticipation,
+      },
     });
 
     return NextResponse.json({

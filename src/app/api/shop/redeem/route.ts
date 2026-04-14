@@ -27,16 +27,32 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Item not found" }, { status: 404 });
     }
 
+    const maxRedeemPerUser = item.maxRedeemPerUser || 1;
+
     // Use MongoDB Transaction to ensure full atomicity
     const dbSession = await mongoose.startSession();
     dbSession.startTransaction();
 
     try {
+      const priorRedemptions = await Redemption.countDocuments(
+        { userId: session.user.id, itemId },
+        { session: dbSession }
+      );
+
+      if (priorRedemptions >= maxRedeemPerUser) {
+        await dbSession.abortTransaction();
+        dbSession.endSession();
+        return NextResponse.json(
+          { error: "Redemption limit reached for this item" },
+          { status: 409 }
+        );
+      }
+
       // Step 1: Atomically decrement quantity ONLY if > 0
       const updatedItem = await ShopItem.findOneAndUpdate(
         { _id: itemId, quantity: { $gt: 0 } },
         { $inc: { quantity: -1 } },
-        { new: true, session: dbSession }
+        { returnDocument: "after", session: dbSession }
       );
 
       if (!updatedItem) {
@@ -47,9 +63,9 @@ export async function POST(req: NextRequest) {
 
       // Step 2: Atomically deduct points ONLY if user has enough
       const updatedUser = await User.findOneAndUpdate(
-        { _id: session.user.id, points: { $gte: item.cost } },
-        { $inc: { points: -item.cost } },
-        { new: true, session: dbSession }
+        { _id: session.user.id, availablePoints: { $gte: item.cost } },
+        { $inc: { availablePoints: -item.cost } },
+        { returnDocument: "after", session: dbSession }
       );
 
       if (!updatedUser) {
@@ -80,7 +96,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         success: true,
         message: `Redeemed "${item.name}" for ${item.cost} points!`,
-        remainingPoints: updatedUser.points,
+        remainingPoints: updatedUser.availablePoints,
         remainingStock: updatedItem.quantity,
       });
     } catch (transactionError) {

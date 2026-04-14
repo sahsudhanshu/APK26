@@ -40,7 +40,8 @@ export async function GET(req: NextRequest) {
       user: {
         name: user.name,
         email: user.email,
-        points: user.points,
+        totalPoints: user.totalPoints ?? 0,
+        availablePoints: user.availablePoints ?? 0,
         role: user.role,
         createdAt: user.createdAt,
       },

@@ -18,6 +18,8 @@ interface ShopItemData {
   name: string;
   cost: number;
   quantity: number;
+  imageUrl?: string;
+  maxRedeemPerUser: number;
 }
 
 export default function ShopPage() {
@@ -87,7 +89,7 @@ export default function ShopPage() {
           <div className="glass" style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1rem", borderRadius: "var(--radius)", marginTop: "1rem" }}>
             <Zap size={16} style={{ color: "hsl(var(--primary))" }} />
             <span className="font-mono" style={{ fontWeight: 700, color: "hsl(var(--primary))" }}>
-              {session.user.points}
+              {session.user.availablePoints}
             </span>
             <span style={{ fontSize: "0.875rem", color: "hsl(var(--muted-foreground))" }}>points available</span>
           </div>
@@ -112,7 +114,7 @@ export default function ShopPage() {
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "1.5rem" }}>
           {items.map((item, index) => {
-            const canAfford = session ? session.user.points >= item.cost : false;
+            const canAfford = session ? session.user.availablePoints >= item.cost : false;
             const inStock = item.quantity > 0;
 
             return (
@@ -129,10 +131,10 @@ export default function ShopPage() {
                   flexDirection: "column",
                 }}
               >
-                {/* Item header orb */}
+                {/* Item image */}
                 <div
                   style={{
-                    height: "100px",
+                    height: "160px",
                     background: "linear-gradient(135deg, hsl(var(--secondary) / 0.15), hsl(var(--primary) / 0.1))",
                     display: "flex",
                     alignItems: "center",
@@ -141,17 +143,28 @@ export default function ShopPage() {
                     overflow: "hidden",
                   }}
                 >
-                  <div
-                    style={{
-                      position: "absolute",
-                      width: "120px",
-                      height: "120px",
-                      background: "hsl(var(--secondary) / 0.1)",
-                      borderRadius: "50%",
-                      filter: "blur(40px)",
-                    }}
-                  />
-                  <ShoppingBag size={36} style={{ color: "hsl(var(--secondary))", position: "relative" }} />
+                  {item.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={item.imageUrl}
+                      alt={item.name}
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    />
+                  ) : (
+                    <>
+                      <div
+                        style={{
+                          position: "absolute",
+                          width: "120px",
+                          height: "120px",
+                          background: "hsl(var(--secondary) / 0.1)",
+                          borderRadius: "50%",
+                          filter: "blur(40px)",
+                        }}
+                      />
+                      <ShoppingBag size={36} style={{ color: "hsl(var(--secondary))", position: "relative" }} />
+                    </>
+                  )}
                 </div>
 
                 <div style={{ padding: "1.5rem", flex: 1, display: "flex", flexDirection: "column" }}>

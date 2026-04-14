@@ -15,6 +15,7 @@ const RedemptionSchema = new Schema<IRedemption>({
 });
 
 RedemptionSchema.index({ userId: 1, timestamp: -1 });
+RedemptionSchema.index({ itemId: 1, timestamp: -1 });
 
 const Redemption: Model<IRedemption> =
   mongoose.models.Redemption || mongoose.model<IRedemption>("Redemption", RedemptionSchema);

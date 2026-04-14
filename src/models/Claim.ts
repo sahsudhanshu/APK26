@@ -20,17 +20,8 @@ const ClaimSchema = new Schema<IClaim>({
   reason: { type: String },
 });
 
-// Compound unique index: only one claim per user per event (for non-manual types)
-// Manual claims don't have eventId, so this only applies to participation/winner claims
-ClaimSchema.index(
-  { userId: 1, eventId: 1, type: 1 },
-  {
-    unique: true,
-    partialFilterExpression: {
-      type: { $in: ["participation", "winner"] },
-    },
-  }
-);
+// Index for fast per-user/per-event claim lookups
+ClaimSchema.index({ userId: 1, eventId: 1, type: 1 });
 
 ClaimSchema.index({ userId: 1 });
 ClaimSchema.index({ timestamp: -1 });

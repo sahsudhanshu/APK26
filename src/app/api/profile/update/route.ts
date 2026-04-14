@@ -24,16 +24,17 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: "Selected image is too large even after compression." }, { status: 400 });
     }
 
-    const updateData: Partial<{ name: string; phone: string; image: string }> = {};
+    const updateData: Partial<{ name: string; phone: string; image: string; hasOnboarded: boolean }> = {};
     if (name !== undefined) updateData.name = name.trim();
     if (phone !== undefined) updateData.phone = phone.trim();
     if (image !== undefined) updateData.image = image;
+    if (phone !== undefined) updateData.hasOnboarded = true;
 
     await dbConnect();
     const updatedUser = await User.findByIdAndUpdate(
       session.user.id,
       { $set: updateData },
-      { new: true, runValidators: true }
+      { returnDocument: "after", runValidators: true }
     );
 
     if (!updatedUser) {

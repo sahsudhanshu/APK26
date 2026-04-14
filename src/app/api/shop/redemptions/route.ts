@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import dbConnect from "@/lib/db";
-import User from "@/models/User";
+import Redemption from "@/models/Redemption";
 
 export async function GET(req: NextRequest) {
   try {
@@ -11,27 +11,22 @@ export async function GET(req: NextRequest) {
     }
 
     const { searchParams } = new URL(req.url);
-    const q = searchParams.get("q") || "";
+    const itemId = searchParams.get("itemId");
+
+    if (!itemId) {
+      return NextResponse.json({ error: "itemId is required" }, { status: 400 });
+    }
 
     await dbConnect();
 
-    const query = q
-      ? {
-          $or: [
-            { name: { $regex: q, $options: "i" } },
-            { email: { $regex: q, $options: "i" } },
-          ],
-        }
-      : {};
-
-    const users = await User.find(query, { name: 1, email: 1, totalPoints: 1, availablePoints: 1, points: 1, role: 1 })
-      .sort({ totalPoints: -1 })
-      .limit(20)
+    const redemptions = await Redemption.find({ itemId })
+      .populate("userId", "name email")
+      .sort({ timestamp: -1 })
       .lean();
 
-    return NextResponse.json({ users });
+    return NextResponse.json({ redemptions });
   } catch (error) {
-    console.error("Users search error:", error);
+    console.error("Redemptions error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

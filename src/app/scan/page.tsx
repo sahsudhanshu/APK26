@@ -21,6 +21,9 @@ export default function ScanPage() {
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
     }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
     if (animFrameRef.current) {
       cancelAnimationFrame(animFrameRef.current);
     }
@@ -110,15 +113,36 @@ export default function ScanPage() {
         video: { facingMode: "environment" },
       });
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play();
-      }
       setScanning(true);
     } catch {
       toast.error("Camera access denied");
     }
   };
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !streamRef.current || !scanning) return;
+
+    video.srcObject = streamRef.current;
+    video.muted = true;
+    video.playsInline = true;
+
+    const tryPlay = () => {
+      video.play().catch(() => {
+        // Ignore autoplay errors; user gesture already started the stream
+      });
+    };
+
+    if (video.readyState >= 2) {
+      tryPlay();
+    } else {
+      video.onloadedmetadata = tryPlay;
+    }
+
+    return () => {
+      video.onloadedmetadata = null;
+    };
+  }, [scanning]);
 
   useEffect(() => {
     if (scanning) {
@@ -169,50 +193,60 @@ export default function ScanPage() {
           style={{
             borderRadius: "var(--radius)",
             overflow: "hidden",
-            position: "relative",
           }}
         >
           {scanning ? (
-            <div style={{ position: "relative" }}>
-              <video
-                ref={videoRef}
-                style={{ width: "100%", display: "block", borderRadius: "var(--radius)" }}
-                playsInline
-                muted
-              />
-              <canvas ref={canvasRef} style={{ display: "none" }} />
-              {/* Scan overlay */}
+            <div style={{ padding: "1rem", display: "grid", gap: "1rem" }}>
               <div
                 style={{
-                  position: "absolute",
-                  inset: 0,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  pointerEvents: "none",
+                  position: "relative",
+                  width: "100%",
+                  aspectRatio: "4 / 3",
+                  borderRadius: "calc(var(--radius) - 0.25rem)",
+                  overflow: "hidden",
+                  background: "hsl(var(--background-secondary))",
+                  border: "1px solid hsl(var(--border))",
                 }}
               >
+                <video
+                  ref={videoRef}
+                  style={{ width: "100%", height: "100%", display: "block", objectFit: "cover", background: "#000" }}
+                  playsInline
+                  muted
+                  autoPlay
+                />
+                <canvas ref={canvasRef} style={{ display: "none" }} />
+                {/* Scan overlay */}
                 <div
                   style={{
-                    width: "200px",
-                    height: "200px",
-                    border: "2px solid hsl(var(--primary))",
-                    borderRadius: "16px",
-                    boxShadow: "0 0 30px hsl(var(--primary) / 0.3)",
-                    position: "relative",
+                    position: "absolute",
+                    inset: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    pointerEvents: "none",
                   }}
                 >
-                  <div style={{ position: "absolute", top: "-2px", left: "-2px", width: "30px", height: "30px", borderTop: "4px solid hsl(var(--primary))", borderLeft: "4px solid hsl(var(--primary))", borderRadius: "8px 0 0 0" }} />
-                  <div style={{ position: "absolute", top: "-2px", right: "-2px", width: "30px", height: "30px", borderTop: "4px solid hsl(var(--primary))", borderRight: "4px solid hsl(var(--primary))", borderRadius: "0 8px 0 0" }} />
-                  <div style={{ position: "absolute", bottom: "-2px", left: "-2px", width: "30px", height: "30px", borderBottom: "4px solid hsl(var(--primary))", borderLeft: "4px solid hsl(var(--primary))", borderRadius: "0 0 0 8px" }} />
-                  <div style={{ position: "absolute", bottom: "-2px", right: "-2px", width: "30px", height: "30px", borderBottom: "4px solid hsl(var(--primary))", borderRight: "4px solid hsl(var(--primary))", borderRadius: "0 0 8px 0" }} />
+                  <div
+                    style={{
+                      width: "200px",
+                      height: "200px",
+                      border: "2px solid hsl(var(--primary))",
+                      borderRadius: "16px",
+                      boxShadow: "0 0 30px hsl(var(--primary) / 0.3)",
+                      position: "relative",
+                    }}
+                  >
+                    <div style={{ position: "absolute", top: "-2px", left: "-2px", width: "30px", height: "30px", borderTop: "4px solid hsl(var(--primary))", borderLeft: "4px solid hsl(var(--primary))", borderRadius: "8px 0 0 0" }} />
+                    <div style={{ position: "absolute", top: "-2px", right: "-2px", width: "30px", height: "30px", borderTop: "4px solid hsl(var(--primary))", borderRight: "4px solid hsl(var(--primary))", borderRadius: "0 8px 0 0" }} />
+                    <div style={{ position: "absolute", bottom: "-2px", left: "-2px", width: "30px", height: "30px", borderBottom: "4px solid hsl(var(--primary))", borderLeft: "4px solid hsl(var(--primary))", borderRadius: "0 0 0 8px" }} />
+                    <div style={{ position: "absolute", bottom: "-2px", right: "-2px", width: "30px", height: "30px", borderBottom: "4px solid hsl(var(--primary))", borderRight: "4px solid hsl(var(--primary))", borderRadius: "0 0 8px 0" }} />
+                  </div>
                 </div>
               </div>
-              <div style={{ padding: "1rem", textAlign: "center" }}>
-                <button onClick={stopCamera} className="btn-danger" style={{ width: "100%" }}>
-                  Stop Scanning
-                </button>
-              </div>
+              <button onClick={stopCamera} className="btn-danger" style={{ width: "100%" }}>
+                Stop Scanning
+              </button>
             </div>
           ) : claiming ? (
             <div style={{ padding: "4rem", textAlign: "center" }}>

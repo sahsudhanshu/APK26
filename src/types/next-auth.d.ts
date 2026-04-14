@@ -8,7 +8,9 @@ declare module "next-auth" {
       email: string;
       image?: string;
       role: "user" | "admin";
-      points: number;
+      totalPoints: number;
+      availablePoints: number;
+      hasOnboarded: boolean;
     };
   }
 }

@@ -21,22 +21,44 @@ import {
   Power,
   PowerOff,
 } from "lucide-react";
+import * as XLSX from "xlsx";
 
 interface EventData {
   _id: string;
   name: string;
   pointsParticipation: number;
   pointsWinner: number;
+  maxClaimsPerUser: number;
+  claimsCount?: number;
+  participationClaims?: number;
+  winnerClaims?: number;
   active: boolean;
   createdAt: string;
+}
+
+interface ShopItemData {
+  _id: string;
+  name: string;
+  cost: number;
+  quantity: number;
+  imageUrl?: string;
+  maxRedeemPerUser: number;
 }
 
 interface UserData {
   _id: string;
   name: string;
   email: string;
-  points: number;
+  totalPoints?: number;
+  availablePoints?: number;
   role: string;
+}
+
+interface RedemptionEntry {
+  _id: string;
+  status: "pending" | "completed";
+  timestamp: string;
+  userId?: { name: string; email: string } | null;
 }
 
 interface LogEntry {
@@ -59,6 +81,7 @@ export default function AdminPage() {
   const [eventName, setEventName] = useState("");
   const [eventParticipation, setEventParticipation] = useState("");
   const [eventWinner, setEventWinner] = useState("");
+  const [eventMaxClaims, setEventMaxClaims] = useState("1");
   const [creatingEvent, setCreatingEvent] = useState(false);
 
   // QR state
@@ -84,7 +107,21 @@ export default function AdminPage() {
   const [shopName, setShopName] = useState("");
   const [shopCost, setShopCost] = useState("");
   const [shopQuantity, setShopQuantity] = useState("");
+  const [shopImageUrl, setShopImageUrl] = useState("");
+  const [shopMaxRedeem, setShopMaxRedeem] = useState("1");
   const [creatingItem, setCreatingItem] = useState(false);
+  const [shopItems, setShopItems] = useState<ShopItemData[]>([]);
+  const [loadingShopItems, setLoadingShopItems] = useState(false);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editCost, setEditCost] = useState("");
+  const [editQuantity, setEditQuantity] = useState("");
+  const [editImageUrl, setEditImageUrl] = useState("");
+  const [editMaxRedeem, setEditMaxRedeem] = useState("1");
+  const [savingItem, setSavingItem] = useState(false);
+  const [redemptionsByItem, setRedemptionsByItem] = useState<Record<string, RedemptionEntry[]>>({});
+  const [loadingRedemptions, setLoadingRedemptions] = useState<Record<string, boolean>>({});
+  const [downloadingRedemptions, setDownloadingRedemptions] = useState(false);
 
   const fetchEvents = useCallback(async () => {
     try {
@@ -95,6 +132,91 @@ export default function AdminPage() {
       console.error("Failed to fetch events");
     }
   }, []);
+
+  const fetchShopItems = useCallback(async () => {
+    setLoadingShopItems(true);
+    try {
+      const res = await fetch("/api/shop/items");
+      const data = await res.json();
+      setShopItems(data.items || []);
+    } catch {
+      console.error("Failed to fetch shop items");
+    } finally {
+      setLoadingShopItems(false);
+    }
+  }, []);
+
+  const fetchItemRedemptions = useCallback(async (itemId: string) => {
+    setLoadingRedemptions((prev) => ({ ...prev, [itemId]: true }));
+    try {
+      const res = await fetch(`/api/shop/redemptions?itemId=${encodeURIComponent(itemId)}`);
+      const data = await res.json();
+      setRedemptionsByItem((prev) => ({ ...prev, [itemId]: data.redemptions || [] }));
+    } catch {
+      console.error("Failed to fetch redemptions");
+    } finally {
+      setLoadingRedemptions((prev) => ({ ...prev, [itemId]: false }));
+    }
+  }, []);
+
+  const downloadRedemptionsWorkbook = async () => {
+    if (!shopItems.length) {
+      toast.error("No shop items to export");
+      return;
+    }
+
+    setDownloadingRedemptions(true);
+    try {
+      const workbook = XLSX.utils.book_new();
+      const usedSheetNames = new Set<string>();
+
+      const normalizeSheetName = (name: string) => {
+        const cleaned = name.replace(/[\\/?*\[\]]/g, "").trim() || "Item";
+        return cleaned.length > 31 ? cleaned.slice(0, 31) : cleaned;
+      };
+
+      const ensureUniqueName = (baseName: string) => {
+        let name = baseName;
+        let suffix = 1;
+        while (usedSheetNames.has(name)) {
+          const suffixText = `-${suffix}`;
+          const maxBase = 31 - suffixText.length;
+          name = `${baseName.slice(0, maxBase)}${suffixText}`;
+          suffix += 1;
+        }
+        usedSheetNames.add(name);
+        return name;
+      };
+
+      for (const item of shopItems) {
+        const res = await fetch(`/api/shop/redemptions?itemId=${encodeURIComponent(item._id)}`);
+        const data = await res.json();
+        const rows = (data.redemptions || []).map((r: RedemptionEntry) => ({
+          Name: r.userId?.name || "Unknown",
+          Email: r.userId?.email || "",
+          Status: r.status,
+          Timestamp: new Date(r.timestamp).toLocaleString(),
+        }));
+
+        if (!rows.length) {
+          rows.push({ Name: "", Email: "", Status: "", Timestamp: "" });
+        }
+
+        const sheet = XLSX.utils.json_to_sheet(rows);
+        const baseName = normalizeSheetName(item.name || "Item");
+        const sheetName = ensureUniqueName(baseName);
+        XLSX.utils.book_append_sheet(workbook, sheet, sheetName);
+      }
+
+      const filename = `shop-redemptions-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      XLSX.writeFile(workbook, filename);
+    } catch (error) {
+      console.error("Failed to export redemptions", error);
+      toast.error("Failed to export redemptions");
+    } finally {
+      setDownloadingRedemptions(false);
+    }
+  };
 
   const fetchLogs = useCallback(async (page: number) => {
     setLoadingLogs(true);
@@ -119,6 +241,10 @@ export default function AdminPage() {
   useEffect(() => {
     if (activeTab === "logs") fetchLogs(logsPage);
   }, [activeTab, logsPage, fetchLogs]);
+
+  useEffect(() => {
+    if (activeTab === "shop") fetchShopItems();
+  }, [activeTab, fetchShopItems]);
 
   // User search debounce
   useEffect(() => {
@@ -174,6 +300,7 @@ export default function AdminPage() {
           name: eventName,
           pointsParticipation: parseInt(eventParticipation),
           pointsWinner: parseInt(eventWinner) || 0,
+          maxClaimsPerUser: parseInt(eventMaxClaims) || 1,
         }),
       });
       const data = await res.json();
@@ -182,6 +309,7 @@ export default function AdminPage() {
         setEventName("");
         setEventParticipation("");
         setEventWinner("");
+        setEventMaxClaims("1");
         fetchEvents();
       } else {
         toast.error(data.error);
@@ -285,6 +413,8 @@ export default function AdminPage() {
           name: shopName,
           cost: parseInt(shopCost),
           quantity: parseInt(shopQuantity),
+          imageUrl: shopImageUrl.trim() || "",
+          maxRedeemPerUser: parseInt(shopMaxRedeem) || 1,
         }),
       });
       const data = await res.json();
@@ -293,6 +423,9 @@ export default function AdminPage() {
         setShopName("");
         setShopCost("");
         setShopQuantity("");
+        setShopImageUrl("");
+        setShopMaxRedeem("1");
+        fetchShopItems();
       } else {
         toast.error(data.error);
       }
@@ -300,6 +433,54 @@ export default function AdminPage() {
       toast.error("Failed to create item");
     } finally {
       setCreatingItem(false);
+    }
+  };
+
+  const startEditItem = (item: ShopItemData) => {
+    setEditingItemId(item._id);
+    setEditName(item.name);
+    setEditCost(String(item.cost));
+    setEditQuantity(String(item.quantity));
+    setEditImageUrl(item.imageUrl || "");
+    setEditMaxRedeem(String(item.maxRedeemPerUser || 1));
+  };
+
+  const cancelEditItem = () => {
+    setEditingItemId(null);
+  };
+
+  const saveEditItem = async () => {
+    if (!editingItemId) return;
+    if (!editName || !editCost || !editQuantity) {
+      toast.error("Name, cost, and quantity are required");
+      return;
+    }
+    setSavingItem(true);
+    try {
+      const res = await fetch("/api/shop/items", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          itemId: editingItemId,
+          name: editName,
+          cost: parseInt(editCost),
+          quantity: parseInt(editQuantity),
+          imageUrl: editImageUrl.trim() || "",
+          maxRedeemPerUser: parseInt(editMaxRedeem) || 1,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(`Item "${data.item?.name || editName}" updated`);
+        setEditingItemId(null);
+        fetchShopItems();
+      } else {
+        toast.error(data.error);
+      }
+    } catch {
+      toast.error("Failed to update item");
+    } finally {
+      setSavingItem(false);
     }
   };
 
@@ -324,16 +505,16 @@ export default function AdminPage() {
           </h1>
         </div>
 
-        <div style={{ display: "flex", gap: "2rem", flexWrap: "wrap" }}>
+        <div className="admin-layout" style={{ display: "flex", gap: "2rem", flexWrap: "wrap" }}>
           {/* Sidebar */}
-          <div style={{ width: "220px", flexShrink: 0 }}>
+          <div className="admin-sidebar" style={{ width: "220px", flexShrink: 0 }}>
             {tabs.map((tab) => {
               const Icon = tab.icon;
               return (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`tab-button ${activeTab === tab.id ? "active" : ""}`}
+                  className={`tab-button admin-tab ${activeTab === tab.id ? "active" : ""}`}
                   style={{ marginBottom: "0.5rem" }}
                 >
                   <Icon size={18} />
@@ -344,7 +525,7 @@ export default function AdminPage() {
           </div>
 
           {/* Content */}
-          <div className="glass-subtle" style={{ flex: 1, padding: "2rem", borderRadius: "var(--radius)", minWidth: 0 }}>
+          <div className="glass-subtle admin-content" style={{ flex: 1, padding: "2rem", borderRadius: "var(--radius)", minWidth: 0 }}>
             {/* EVENTS TAB */}
             {activeTab === "events" && (
               <div>
@@ -365,6 +546,10 @@ export default function AdminPage() {
                   <div>
                     <label style={{ fontSize: "0.75rem", color: "hsl(var(--muted-foreground))", display: "block", marginBottom: "0.375rem", textTransform: "uppercase", letterSpacing: "0.1em" }}>Winner Pts</label>
                     <input className="input" type="number" value={eventWinner} onChange={(e) => setEventWinner(e.target.value)} placeholder="50" />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: "0.75rem", color: "hsl(var(--muted-foreground))", display: "block", marginBottom: "0.375rem", textTransform: "uppercase", letterSpacing: "0.1em" }}>Max Claims / User</label>
+                    <input className="input" type="number" min={1} value={eventMaxClaims} onChange={(e) => setEventMaxClaims(e.target.value)} placeholder="1" />
                   </div>
                 </div>
                 <button onClick={createEvent} disabled={creatingEvent} className="btn-primary">
@@ -431,12 +616,14 @@ export default function AdminPage() {
                             {event.active ? "ACTIVE" : "INACTIVE"}
                           </span>
                         </div>
-                        <div className="font-mono" style={{ fontSize: "0.75rem", color: "hsl(var(--muted-foreground))", display: "flex", gap: "1rem" }}>
+                        <div className="font-mono" style={{ fontSize: "0.75rem", color: "hsl(var(--muted-foreground))", display: "flex", gap: "1rem", flexWrap: "wrap" }}>
                           <span>Participation: <strong style={{ color: "hsl(var(--primary))" }}>{event.pointsParticipation}</strong></span>
                           <span>Winner: <strong style={{ color: "hsl(var(--success))" }}>{event.pointsWinner}</strong></span>
+                          <span>Claims: <strong style={{ color: "hsl(var(--secondary))" }}>{event.participationClaims ?? event.claimsCount ?? 0}</strong></span>
+                          <span>Max/User: <strong style={{ color: "hsl(var(--foreground))" }}>{event.maxClaimsPerUser || 1}</strong></span>
                         </div>
                       </div>
-                      <div style={{ display: "flex", gap: "0.5rem" }}>
+                      <div className="admin-actions" style={{ display: "flex", gap: "0.5rem" }}>
                         <button
                           onClick={() => toggleEvent(event._id, event.active)}
                           disabled={togglingEvent === event._id}
@@ -531,7 +718,7 @@ export default function AdminPage() {
                             <div style={{ fontWeight: 500 }}>{u.name}</div>
                             <div className="font-mono" style={{ fontSize: "0.75rem", color: "hsl(var(--muted-foreground))" }}>{u.email}</div>
                           </div>
-                          <span className="font-mono" style={{ color: "hsl(var(--primary))" }}>{u.points} pts</span>
+                          <span className="font-mono" style={{ color: "hsl(var(--primary))" }}>{u.availablePoints ?? 0} pts</span>
                         </button>
                       ))}
                     </div>
@@ -546,8 +733,11 @@ export default function AdminPage() {
                         <div className="font-mono" style={{ fontSize: "0.75rem", color: "hsl(var(--muted-foreground))" }}>{selectedUser.email}</div>
                       </div>
                       <div style={{ textAlign: "right" }}>
-                        <div className="font-mono" style={{ fontSize: "1.25rem", fontWeight: 700, color: "hsl(var(--primary))" }}>{selectedUser.points}</div>
-                        <div style={{ fontSize: "0.625rem", color: "hsl(var(--muted-foreground))", textTransform: "uppercase", letterSpacing: "0.1em" }}>current pts</div>
+                        <div className="font-mono" style={{ fontSize: "1.25rem", fontWeight: 700, color: "hsl(var(--primary))" }}>{selectedUser.availablePoints ?? 0}</div>
+                        <div style={{ fontSize: "0.625rem", color: "hsl(var(--muted-foreground))", textTransform: "uppercase", letterSpacing: "0.1em" }}>available pts</div>
+                        <div className="font-mono" style={{ fontSize: "0.8125rem", color: "hsl(var(--muted-foreground))", marginTop: "0.25rem" }}>
+                          total: {selectedUser.totalPoints ?? 0}
+                        </div>
                       </div>
                     </div>
 
@@ -674,16 +864,219 @@ export default function AdminPage() {
                     <label style={{ fontSize: "0.75rem", color: "hsl(var(--muted-foreground))", display: "block", marginBottom: "0.375rem", textTransform: "uppercase", letterSpacing: "0.1em" }}>Quantity</label>
                     <input className="input" type="number" value={shopQuantity} onChange={(e) => setShopQuantity(e.target.value)} placeholder="50" />
                   </div>
+                  <div>
+                    <label style={{ fontSize: "0.75rem", color: "hsl(var(--muted-foreground))", display: "block", marginBottom: "0.375rem", textTransform: "uppercase", letterSpacing: "0.1em" }}>Image URL (optional)</label>
+                    <input className="input" value={shopImageUrl} onChange={(e) => setShopImageUrl(e.target.value)} placeholder="https://..." />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: "0.75rem", color: "hsl(var(--muted-foreground))", display: "block", marginBottom: "0.375rem", textTransform: "uppercase", letterSpacing: "0.1em" }}>Max Redeem / User</label>
+                    <input className="input" type="number" min={1} value={shopMaxRedeem} onChange={(e) => setShopMaxRedeem(e.target.value)} placeholder="1" />
+                  </div>
                 </div>
                 <button onClick={createShopItem} disabled={creatingItem} className="btn-primary">
                   {creatingItem ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
                   Create Item
                 </button>
+
+                <hr style={{ border: "none", borderTop: "1px solid hsl(var(--border) / 0.3)", margin: "2rem 0" }} />
+
+                <div className="shop-header-actions" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem", gap: "0.75rem" }}>
+                  <h3 style={{ fontSize: "1rem", fontWeight: 700, display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <ShoppingBag size={16} /> Existing Items ({shopItems.length})
+                  </h3>
+                  <div className="shop-header-buttons" style={{ display: "flex", gap: "0.5rem" }}>
+                    <button onClick={downloadRedemptionsWorkbook} disabled={downloadingRedemptions} className="btn-secondary" style={{ padding: "0.5rem 0.75rem", fontSize: "0.75rem" }}>
+                      {downloadingRedemptions ? <Loader2 size={14} className="animate-spin" /> : "Download Excel"}
+                    </button>
+                    <button onClick={fetchShopItems} className="btn-secondary" style={{ padding: "0.5rem 0.75rem", fontSize: "0.75rem" }}>
+                      <RefreshCw size={14} />
+                    </button>
+                  </div>
+                </div>
+
+                {loadingShopItems ? (
+                  <div style={{ textAlign: "center", padding: "2rem" }}>
+                    <Loader2 size={28} style={{ color: "hsl(var(--primary))", animation: "spin 1s linear infinite" }} />
+                  </div>
+                ) : shopItems.length === 0 ? (
+                  <p className="font-mono" style={{ color: "hsl(var(--muted-foreground))", textAlign: "center", padding: "2rem" }}>
+                    No shop items yet.
+                  </p>
+                ) : (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "1rem" }}>
+                    {shopItems.map((item) => (
+                      <div key={item._id} className="glass-premium" style={{ borderRadius: "var(--radius)", overflow: "hidden" }}>
+                        <div style={{ height: "120px", background: "hsl(var(--background-secondary))", position: "relative", overflow: "hidden" }}>
+                          {item.imageUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={item.imageUrl} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          ) : (
+                            <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "hsl(var(--muted-foreground))" }}>
+                              <ShoppingBag size={24} />
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ padding: "0.75rem 1rem" }}>
+                          <div style={{ fontWeight: 600, marginBottom: "0.5rem" }}>{item.name}</div>
+                          <div className="font-mono" style={{ fontSize: "0.75rem", color: "hsl(var(--muted-foreground))", display: "flex", justifyContent: "space-between" }}>
+                            <span>{item.cost} pts</span>
+                            <span>{item.quantity} left</span>
+                          </div>
+                          <div className="font-mono" style={{ fontSize: "0.7rem", color: "hsl(var(--muted-foreground))", marginTop: "0.25rem" }}>
+                            max/user: {item.maxRedeemPerUser || 1}
+                          </div>
+                          <div className="shop-item-actions" style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.5rem", marginTop: "0.75rem" }}>
+                            <button
+                              onClick={() => startEditItem(item)}
+                              className="btn-secondary"
+                              style={{ padding: "0.375rem 0.75rem", fontSize: "0.75rem" }}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => fetchItemRedemptions(item._id)}
+                              className="btn-secondary"
+                              style={{ padding: "0.375rem 0.75rem", fontSize: "0.75rem" }}
+                            >
+                              View Redemptions
+                            </button>
+                          </div>
+                        </div>
+
+                        {editingItemId === item._id && (
+                          <div style={{ padding: "0 1rem 1rem" }}>
+                            <div className="responsive-grid" style={{ marginBottom: "0.75rem" }}>
+                              <div>
+                                <label style={{ fontSize: "0.7rem", color: "hsl(var(--muted-foreground))", display: "block", marginBottom: "0.25rem", textTransform: "uppercase", letterSpacing: "0.1em" }}>Name</label>
+                                <input className="input" value={editName} onChange={(e) => setEditName(e.target.value)} />
+                              </div>
+                              <div>
+                                <label style={{ fontSize: "0.7rem", color: "hsl(var(--muted-foreground))", display: "block", marginBottom: "0.25rem", textTransform: "uppercase", letterSpacing: "0.1em" }}>Cost</label>
+                                <input className="input" type="number" value={editCost} onChange={(e) => setEditCost(e.target.value)} />
+                              </div>
+                              <div>
+                                <label style={{ fontSize: "0.7rem", color: "hsl(var(--muted-foreground))", display: "block", marginBottom: "0.25rem", textTransform: "uppercase", letterSpacing: "0.1em" }}>Quantity</label>
+                                <input className="input" type="number" value={editQuantity} onChange={(e) => setEditQuantity(e.target.value)} />
+                              </div>
+                              <div>
+                                <label style={{ fontSize: "0.7rem", color: "hsl(var(--muted-foreground))", display: "block", marginBottom: "0.25rem", textTransform: "uppercase", letterSpacing: "0.1em" }}>Image URL</label>
+                                <input className="input" value={editImageUrl} onChange={(e) => setEditImageUrl(e.target.value)} />
+                              </div>
+                              <div>
+                                <label style={{ fontSize: "0.7rem", color: "hsl(var(--muted-foreground))", display: "block", marginBottom: "0.25rem", textTransform: "uppercase", letterSpacing: "0.1em" }}>Max Redeem / User</label>
+                                <input className="input" type="number" min={1} value={editMaxRedeem} onChange={(e) => setEditMaxRedeem(e.target.value)} />
+                              </div>
+                            </div>
+                            <div className="admin-actions" style={{ display: "flex", gap: "0.5rem" }}>
+                              <button onClick={saveEditItem} disabled={savingItem} className="btn-primary" style={{ padding: "0.5rem 0.75rem", fontSize: "0.75rem" }}>
+                                {savingItem ? <Loader2 size={14} className="animate-spin" /> : "Save"}
+                              </button>
+                              <button onClick={cancelEditItem} className="btn-secondary" style={{ padding: "0.5rem 0.75rem", fontSize: "0.75rem" }}>
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {Object.prototype.hasOwnProperty.call(redemptionsByItem, item._id) && (
+                          <div style={{ padding: "0 1rem 1rem" }}>
+                            <div style={{ fontSize: "0.75rem", fontWeight: 600, marginBottom: "0.5rem" }}>
+                              Redemptions ({redemptionsByItem[item._id]?.length || 0})
+                            </div>
+                            {loadingRedemptions[item._id] ? (
+                              <Loader2 size={16} className="animate-spin" />
+                            ) : redemptionsByItem[item._id]?.length ? (
+                              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                                {redemptionsByItem[item._id].map((r) => (
+                                  <div key={r._id} className="card" style={{ padding: "0.5rem", fontSize: "0.75rem" }}>
+                                    <div style={{ fontWeight: 600 }}>{r.userId?.name || "Unknown"}</div>
+                                    <div className="font-mono" style={{ color: "hsl(var(--muted-foreground))" }}>{r.userId?.email || ""}</div>
+                                    <div className="font-mono" style={{ marginTop: "0.25rem", color: "hsl(var(--muted-foreground))" }}>
+                                      {new Date(r.timestamp).toLocaleString()} — {r.status}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="font-mono" style={{ color: "hsl(var(--muted-foreground))" }}>No redemptions yet.</div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
         </div>
       </motion.div>
+
+      <style jsx>{`
+        @media (max-width: 1024px) {
+          .admin-layout {
+            flex-direction: column;
+          }
+
+          .admin-sidebar {
+            width: 100% !important;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 0.5rem;
+          }
+
+          .admin-tab {
+            margin-bottom: 0 !important;
+          }
+        }
+
+        @media (max-width: 768px) {
+          .admin-content {
+            padding: 1.25rem !important;
+          }
+
+          .admin-actions {
+            width: 100%;
+            flex-wrap: wrap;
+          }
+
+          .admin-actions > :global(button) {
+            flex: 1 1 160px;
+            justify-content: center;
+          }
+        }
+
+        @media (max-width: 1024px) {
+          .shop-header-actions {
+            flex-direction: column;
+            align-items: flex-start;
+          }
+
+          .shop-header-buttons {
+            width: 100%;
+            flex-wrap: wrap;
+          }
+
+          .shop-header-buttons > :global(button) {
+            flex: 1 1 180px;
+            justify-content: center;
+          }
+
+          .shop-item-actions {
+            grid-template-columns: 1fr;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .admin-content {
+            padding: 1rem !important;
+          }
+
+          .admin-actions > :global(button) {
+            flex: 1 1 100%;
+          }
+        }
+      `}</style>
     </div>
   );
 }

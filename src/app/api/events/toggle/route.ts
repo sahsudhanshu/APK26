@@ -22,7 +22,7 @@ export async function PATCH(req: NextRequest) {
     const event = await Event.findByIdAndUpdate(
       eventId,
       { active },
-      { new: true }
+      { returnDocument: "after" }
     );
 
     if (!event) {
