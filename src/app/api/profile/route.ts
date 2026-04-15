@@ -5,6 +5,7 @@ import User from "@/models/User";
 import Claim from "@/models/Claim";
 import { rateLimiter } from "@/lib/rateLimit";
 import Redemption from "@/models/Redemption";
+import "@/models/ShopItem";
 
 export const dynamic = "force-dynamic";
 

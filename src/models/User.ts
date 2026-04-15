@@ -24,7 +24,6 @@ const UserSchema = new Schema<IUser>({
   createdAt: { type: Date, default: Date.now },
 });
 
-UserSchema.index({ email: 1 }, { unique: true });
 UserSchema.index({ totalPoints: -1 }); // For leaderboard sorting
 
 const User: Model<IUser> =

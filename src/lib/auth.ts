@@ -70,7 +70,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
               totalPoints: 0,
               availablePoints: 0,
               hasOnboarded: false,
-              role,
               createdAt: new Date(),
             },
             $set: { role },

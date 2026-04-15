@@ -191,6 +191,23 @@ export default function ProfilePage() {
   }
 
   if (!profile) return null;
+  if (!profile.user) {
+    return (
+      <div className="container" style={{ paddingTop: "4rem", textAlign: "center" }}>
+        <p className="font-mono" style={{ color: "hsl(var(--muted-foreground))", fontSize: "0.875rem" }}>
+          Profile data is unavailable.
+        </p>
+      </div>
+    );
+  }
+
+  const displayName = profile.user.name || "User";
+  const initials = displayName
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
 
   return (
     <div className="container" style={{ paddingBottom: "4rem" }}>
@@ -230,9 +247,9 @@ export default function ProfilePage() {
               >
                 {profile.user.image ? (
                   /* eslint-disable-next-line @next/next/no-img-element */
-                  <img src={profile.user.image} alt={profile.user.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  <img src={profile.user.image} alt={displayName} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                 ) : (
-                  profile.user.name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2)
+                  initials
                 )}
               </div>
               
